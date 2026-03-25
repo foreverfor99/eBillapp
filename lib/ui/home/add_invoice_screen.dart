@@ -1,7 +1,11 @@
+import 'dart:io';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../services/invoice_repository.dart';
+import '../../services/ocr_service.dart';
 import '../../theme/app_colors.dart';
 import '../widgets/app_primary_button.dart';
 import '../widgets/app_scaffold.dart';
@@ -18,16 +22,24 @@ class _AddInvoiceScreenState extends State<AddInvoiceScreen> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _vendorController = TextEditingController();
+
   final InvoiceRepository _invoiceRepository = InvoiceRepository();
+  final OcrService _ocrService = OcrService();
+  final ImagePicker _imagePicker = ImagePicker();
 
   DateTime _issuedAt = DateTime.now();
   bool _isSaving = false;
+  bool _isScanning = false;
+
+  File? _selectedImage;
+  String? _ocrStatus;
 
   @override
   void dispose() {
     _titleController.dispose();
     _amountController.dispose();
     _vendorController.dispose();
+    _ocrService.dispose();
     super.dispose();
   }
 
@@ -40,8 +52,56 @@ class _AddInvoiceScreenState extends State<AddInvoiceScreen> {
       lastDate: DateTime(now.year + 5),
     );
 
-    if (selected != null) {
+    if (selected != null && mounted) {
       setState(() => _issuedAt = selected);
+    }
+  }
+
+  Future<void> _pickReceiptImage(ImageSource source) async {
+    try {
+      final XFile? pickedFile = await _imagePicker.pickImage(source: source);
+      if (pickedFile == null || !mounted) return;
+
+      final File imageFile = File(pickedFile.path);
+
+      setState(() {
+        _selectedImage = imageFile;
+        _isScanning = true;
+        _ocrStatus = 'جاري قراءة الفاتورة...';
+      });
+
+      final OcrResult result = await _ocrService.scanReceipt(imageFile);
+
+      if (!mounted) return;
+
+      if (result.merchant.trim().isNotEmpty) {
+        _titleController.text = result.merchant.trim();
+        _vendorController.text = result.merchant.trim();
+      }
+
+      if (result.amount != null) {
+        _amountController.text = result.amount!.toStringAsFixed(2);
+      }
+
+      if (result.date != null) {
+        _issuedAt = result.date!;
+      }
+
+      setState(() {
+        _ocrStatus = 'تمت قراءة الصورة. راجعي البيانات قبل الحفظ.';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      _showMessage('تعذر قراءة الفاتورة من الصورة.');
+      setState(() {
+        _ocrStatus = 'تعذر قراءة الفاتورة.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isScanning = false;
+        });
+      }
     }
   }
 
@@ -114,10 +174,62 @@ class _AddInvoiceScreenState extends State<AddInvoiceScreen> {
     return AppScaffold(
       appBarTitle: 'إضافة فاتورة',
       title: 'فاتورة جديدة',
-      subtitle: 'أدخل تفاصيل الفاتورة ثم احفظها',
+      subtitle: 'أدخل تفاصيل الفاتورة أو اقرأها من صورة',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _isScanning
+                      ? null
+                      : () => _pickReceiptImage(ImageSource.camera),
+                  icon: const Icon(Icons.camera_alt_outlined),
+                  label: const Text('التقاط صورة'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                    side: const BorderSide(color: AppColors.border),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _isScanning
+                      ? null
+                      : () => _pickReceiptImage(ImageSource.gallery),
+                  icon: const Icon(Icons.photo_library_outlined),
+                  label: const Text('اختيار من المعرض'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                    side: const BorderSide(color: AppColors.border),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_selectedImage != null) ...[
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Image.file(
+                _selectedImage!,
+                height: 180,
+                fit: BoxFit.cover,
+              ),
+            ),
+          ],
+          if (_ocrStatus != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              _ocrStatus!,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
           AppTextField(
             controller: _titleController,
             label: 'عنوان الفاتورة',
@@ -155,9 +267,9 @@ class _AddInvoiceScreenState extends State<AddInvoiceScreen> {
           ),
           const SizedBox(height: 16),
           AppPrimaryButton(
-            label: 'حفظ الفاتورة',
+            label: _isScanning ? 'جاري قراءة الفاتورة...' : 'حفظ الفاتورة',
             isLoading: _isSaving,
-            onPressed: _isSaving ? null : _saveInvoice,
+            onPressed: (_isSaving || _isScanning) ? null : _saveInvoice,
           ),
         ],
       ),

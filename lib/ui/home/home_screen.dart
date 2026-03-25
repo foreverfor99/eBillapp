@@ -29,9 +29,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _bootstrapUserDocument() async {
     try {
       await _authService.ensureCurrentUserDocument();
-    } catch (_) {
-      // Keep the home screen usable even if this fails temporarily.
-    }
+    } catch (_) {}
   }
 
   Future<void> _openAddInvoice() async {
@@ -43,6 +41,28 @@ class _HomeScreenState extends State<HomeScreen> {
   void _openProfile() {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const ProfileScreen()),
+    );
+  }
+
+  void _openInvoices(List<InvoiceRecord> invoices) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _AllInvoicesScreen(invoices: invoices),
+      ),
+    );
+  }
+
+  void _openReports({
+    required double monthlyAmount,
+    required List<double> weeklyBars,
+  }) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _ReportsPreviewScreen(
+          monthlyAmount: monthlyAmount,
+          weeklyBars: weeklyBars,
+        ),
+      ),
     );
   }
 
@@ -145,8 +165,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 padding: const EdgeInsets.all(16),
                 children: [
                   _DashboardHeader(
-                    userName: user.displayName != null &&
-                        user.displayName!.trim().isNotEmpty
+                    userName: user.displayName?.trim().isNotEmpty == true
                         ? user.displayName!.trim()
                         : 'مستخدم eBill',
                   ),
@@ -157,13 +176,19 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 18),
                   _QuickActionsSection(
                     onAddInvoice: _openAddInvoice,
+                    onOpenInvoices: () => _openInvoices(invoices),
+                    onOpenReports: () => _openReports(
+                      monthlyAmount: monthlyAmount,
+                      weeklyBars: weeklyBars,
+                    ),
+                    onOpenSettings: _openProfile,
                   ),
                   const SizedBox(height: 18),
                   _DashboardStatsSection(
                     invoiceCount: invoiceCount,
                     totalAmount: totalAmount,
                     latestInvoiceTitle: latestInvoice?.title ?? '-',
-                    latestInvoiceAmount: latestInvoice?.amount ?? 0.0,
+                    latestInvoiceAmount: latestInvoice?.amount ?? 0,
                   ),
                   const SizedBox(height: 18),
                   _MonthlyChartCard(values: weeklyBars),
@@ -232,14 +257,14 @@ class _DashboardHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Good Evening 👋',
+          'مساء الخير 👋',
           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
             fontWeight: FontWeight.w800,
           ),
         ),
         const SizedBox(height: 6),
         Text(
-          'Your spending overview, $userName',
+          'أهلًا $userName، هذه نظرة سريعة على مصروفاتك.',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
             color: AppColors.textSecondary,
           ),
@@ -277,7 +302,7 @@ class _SpendingHeroCard extends StatelessWidget {
       child: Row(
         children: [
           const Icon(
-            Icons.credit_card,
+            Icons.credit_card_rounded,
             size: 35,
             color: Colors.white,
           ),
@@ -287,15 +312,16 @@ class _SpendingHeroCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'SAR ${totalAmount.toStringAsFixed(2)}',
+                  '${totalAmount.toStringAsFixed(2)} ر.س',
                   style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
                 ),
+                const SizedBox(height: 4),
                 const Text(
-                  'Total spent this month',
+                  'إجمالي الصرف لهذا الشهر',
                   style: TextStyle(color: Colors.white70),
                 ),
               ],
@@ -310,9 +336,15 @@ class _SpendingHeroCard extends StatelessWidget {
 class _QuickActionsSection extends StatelessWidget {
   const _QuickActionsSection({
     required this.onAddInvoice,
+    required this.onOpenInvoices,
+    required this.onOpenReports,
+    required this.onOpenSettings,
   });
 
   final VoidCallback onAddInvoice;
+  final VoidCallback onOpenInvoices;
+  final VoidCallback onOpenReports;
+  final VoidCallback onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -320,36 +352,39 @@ class _QuickActionsSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Quick Actions',
+          'إجراءات سريعة',
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.w700,
           ),
         ),
-        const SizedBox(height: 15),
+        const SizedBox(height: 12),
         GridView.count(
           crossAxisCount: 2,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 15,
-          crossAxisSpacing: 15,
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
           childAspectRatio: 2.5,
           children: [
             _ActionCard(
-              icon: Icons.camera_alt,
-              title: 'Scan',
+              icon: Icons.add_circle_outline_rounded,
+              title: 'إضافة فاتورة',
               onTap: onAddInvoice,
             ),
-            const _ActionCard(
-              icon: Icons.search,
-              title: 'Search',
+            _ActionCard(
+              icon: Icons.receipt_long_rounded,
+              title: 'الفواتير',
+              onTap: onOpenInvoices,
             ),
-            const _ActionCard(
-              icon: Icons.upload,
-              title: 'Export',
+            _ActionCard(
+              icon: Icons.bar_chart_rounded,
+              title: 'التقارير',
+              onTap: onOpenReports,
             ),
-            const _ActionCard(
-              icon: Icons.settings,
-              title: 'Settings',
+            _ActionCard(
+              icon: Icons.settings_outlined,
+              title: 'الإعدادات',
+              onTap: onOpenSettings,
             ),
           ],
         ),
@@ -526,11 +561,11 @@ class _MonthlyChartCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final double maxValue = values.isEmpty
+    final double maxY = values.isEmpty
         ? 10
-        : values.reduce((a, b) => a > b ? a : b);
-
-    final double maxY = maxValue <= 0 ? 10 : maxValue * 1.2;
+        : (values.reduce((a, b) => a > b ? a : b) <= 0
+        ? 10
+        : values.reduce((a, b) => a > b ? a : b) * 1.2);
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -543,14 +578,14 @@ class _MonthlyChartCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'March Spending',
+            'مصروف الشهر',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 15),
           SizedBox(
-            height: 120,
+            height: 140,
             child: BarChart(
               BarChartData(
                 maxY: maxY,
@@ -570,8 +605,8 @@ class _MonthlyChartCard extends StatelessWidget {
                     sideTitles: SideTitles(
                       showTitles: true,
                       getTitlesWidget: (value, meta) {
-                        const labels = ['W1', 'W2', 'W3', 'W4'];
-                        final int index = value.toInt();
+                        const labels = ['الأول', 'الثاني', 'الثالث', 'الرابع'];
+                        final index = value.toInt();
                         if (index < 0 || index >= labels.length) {
                           return const SizedBox.shrink();
                         }
@@ -596,15 +631,169 @@ class _MonthlyChartCard extends StatelessWidget {
                     barRods: [
                       BarChartRodData(
                         toY: values[i],
-                        color: const Color(0xFF8B6A42),
-                        width: 12,
+                        width: 16,
                         borderRadius: BorderRadius.circular(6),
+                        color: const Color(0xFF8B6A42),
                       ),
                     ],
                   ),
                 ),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AllInvoicesScreen extends StatelessWidget {
+  const _AllInvoicesScreen({required this.invoices});
+
+  final List<InvoiceRecord> invoices;
+
+  String _formatDate(DateTime? date) {
+    if (date == null) return '-';
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '${date.year}-$month-$day';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('جميع الفواتير')),
+        body: invoices.isEmpty
+            ? const Center(child: Text('لا توجد فواتير'))
+            : ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: invoices.length,
+          itemBuilder: (context, index) {
+            final invoice = invoices[index];
+            return Card(
+              child: ListTile(
+                title: Text(
+                  invoice.title.isEmpty
+                      ? 'فاتورة بدون عنوان'
+                      : invoice.title,
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      invoice.vendor.isEmpty
+                          ? 'مورد غير محدد'
+                          : invoice.vendor,
+                    ),
+                    const SizedBox(height: 4),
+                    Text('تاريخ الإصدار: ${_formatDate(invoice.issuedAt)}'),
+                    if (invoice.category.trim().isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text('الفئة: ${invoice.category}'),
+                    ],
+                    if (invoice.hasWarranty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        invoice.warrantyExp != null
+                            ? 'الضمان حتى: ${_formatDate(invoice.warrantyExp)}'
+                            : 'يوجد ضمان',
+                      ),
+                    ],
+                  ],
+                ),
+                trailing: Text(
+                  '${invoice.amount.toStringAsFixed(2)} ر.س',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _ReportsPreviewScreen extends StatelessWidget {
+  const _ReportsPreviewScreen({
+    required this.monthlyAmount,
+    required this.weeklyBars,
+  });
+
+  final double monthlyAmount;
+  final List<double> weeklyBars;
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('التقارير')),
+        body: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              _SpendingHeroCard(totalAmount: monthlyAmount),
+              const SizedBox(height: 18),
+              _MonthlyChartCard(values: weeklyBars),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AddInvoiceCta extends StatelessWidget {
+  const _AddInvoiceCta({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+          colors: [
+            Color(0xFF1F6A47),
+            Color(0xFF174F37),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFF2D8B5F)),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.accent.withValues(alpha: 0.18),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'إدارة فواتيرك أسرع',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'أضف فاتورة جديدة واحتفظ بسجل واضح لكل المصروفات.',
+            style: TextStyle(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          AppButton(
+            label: 'إضافة فاتورة',
+            icon: Icons.add_rounded,
+            onPressed: onPressed,
           ),
         ],
       ),
@@ -619,8 +808,8 @@ class _InvoiceCard extends StatelessWidget {
 
   String _formatDate(DateTime? date) {
     if (date == null) return '-';
-    final String month = date.month.toString().padLeft(2, '0');
-    final String day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
     return '${date.year}-$month-$day';
   }
 
@@ -656,6 +845,22 @@ class _InvoiceCard extends StatelessWidget {
                   'تاريخ الإصدار: ${_formatDate(invoice.issuedAt)}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
+                if (invoice.category.trim().isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  _InfoBadge(
+                    icon: Icons.category_outlined,
+                    label: invoice.category,
+                  ),
+                ],
+                if (invoice.hasWarranty) ...[
+                  const SizedBox(height: 8),
+                  _InfoBadge(
+                    icon: Icons.verified_user_outlined,
+                    label: invoice.warrantyExp != null
+                        ? 'ضمان حتى ${_formatDate(invoice.warrantyExp)}'
+                        : 'يوجد ضمان',
+                  ),
+                ],
               ],
             ),
           ),
@@ -665,6 +870,46 @@ class _InvoiceCard extends StatelessWidget {
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
               color: AppColors.accentSoft,
               fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoBadge extends StatelessWidget {
+  const _InfoBadge({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.background.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 16,
+            color: AppColors.accentSoft,
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],

@@ -7,6 +7,9 @@ class InvoiceRecord {
     required this.title,
     required this.amount,
     required this.vendor,
+    required this.category,
+    required this.hasWarranty,
+    required this.warrantyExp,
     required this.issuedAt,
     required this.createdAt,
     required this.updatedAt,
@@ -17,13 +20,16 @@ class InvoiceRecord {
   final String title;
   final double amount;
   final String vendor;
+  final String category;
+  final bool hasWarranty;
+  final DateTime? warrantyExp;
   final DateTime? issuedAt;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
   factory InvoiceRecord.fromDocument(
-    QueryDocumentSnapshot<Map<String, dynamic>> doc,
-  ) {
+      QueryDocumentSnapshot<Map<String, dynamic>> doc,
+      ) {
     final Map<String, dynamic> data = doc.data();
     return InvoiceRecord(
       id: doc.id,
@@ -31,6 +37,9 @@ class InvoiceRecord {
       title: (data['title'] as String? ?? '').trim(),
       amount: _toDouble(data['amount']),
       vendor: (data['vendor'] as String? ?? '').trim(),
+      category: (data['category'] as String? ?? '').trim(),
+      hasWarranty: _toBool(data['hasWarranty']),
+      warrantyExp: _toDateTime(data['warrantyExp']),
       issuedAt: _toDateTime(data['issuedAt']),
       createdAt: _toDateTime(data['createdAt']),
       updatedAt: _toDateTime(data['updatedAt']),
@@ -55,6 +64,16 @@ class InvoiceRecord {
       return double.tryParse(value.trim()) ?? 0;
     }
     return 0;
+  }
+
+  static bool _toBool(Object? value) {
+    if (value is bool) {
+      return value;
+    }
+    if (value is String) {
+      return value.toLowerCase().trim() == 'true';
+    }
+    return false;
   }
 }
 
@@ -93,9 +112,12 @@ class InvoiceRepository {
     required double amount,
     required String vendor,
     required DateTime issuedAt,
+    String category = '',
+    bool hasWarranty = false,
+    DateTime? warrantyExp,
   }) async {
     final DocumentReference<Map<String, dynamic>> ref =
-        _firestore.collection(invoicesCollection).doc();
+    _firestore.collection(invoicesCollection).doc();
 
     await ref.set(
       <String, dynamic>{
@@ -103,6 +125,10 @@ class InvoiceRepository {
         'title': title.trim(),
         'amount': amount,
         'vendor': vendor.trim(),
+        'category': category.trim(),
+        'hasWarranty': hasWarranty,
+        'warrantyExp':
+        warrantyExp != null ? Timestamp.fromDate(warrantyExp) : null,
         'issuedAt': Timestamp.fromDate(issuedAt),
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
