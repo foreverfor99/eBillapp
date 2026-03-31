@@ -8,6 +8,7 @@ class InvoiceRecord {
     required this.amount,
     required this.vendor,
     required this.issuedAt,
+    required this.warrantyExpiresAt,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -18,6 +19,7 @@ class InvoiceRecord {
   final double amount;
   final String vendor;
   final DateTime? issuedAt;
+  final DateTime? warrantyExpiresAt;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -32,9 +34,19 @@ class InvoiceRecord {
       amount: _toDouble(data['amount']),
       vendor: (data['vendor'] as String? ?? '').trim(),
       issuedAt: _toDateTime(data['issuedAt']),
+      warrantyExpiresAt: _toDateTime(data['warrantyExpiresAt']),
       createdAt: _toDateTime(data['createdAt']),
       updatedAt: _toDateTime(data['updatedAt']),
     );
+  }
+
+  bool isWarrantyActive([DateTime? now]) {
+    final DateTime? expiresAt = warrantyExpiresAt;
+    if (expiresAt == null) {
+      return false;
+    }
+    final DateTime today = now ?? DateTime.now();
+    return !expiresAt.isBefore(DateTime(today.year, today.month, today.day));
   }
 
   static DateTime? _toDateTime(Object? value) {
@@ -93,6 +105,7 @@ class InvoiceRepository {
     required double amount,
     required String vendor,
     required DateTime issuedAt,
+    DateTime? warrantyExpiresAt,
   }) async {
     final DocumentReference<Map<String, dynamic>> ref =
         _firestore.collection(invoicesCollection).doc();
@@ -104,6 +117,8 @@ class InvoiceRepository {
         'amount': amount,
         'vendor': vendor.trim(),
         'issuedAt': Timestamp.fromDate(issuedAt),
+        if (warrantyExpiresAt != null)
+          'warrantyExpiresAt': Timestamp.fromDate(warrantyExpiresAt),
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       },

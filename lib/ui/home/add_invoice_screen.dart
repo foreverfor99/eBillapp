@@ -21,6 +21,7 @@ class _AddInvoiceScreenState extends State<AddInvoiceScreen> {
   final InvoiceRepository _invoiceRepository = InvoiceRepository();
 
   DateTime _issuedAt = DateTime.now();
+  DateTime? _warrantyExpiresAt;
   bool _isSaving = false;
 
   @override
@@ -78,6 +79,7 @@ class _AddInvoiceScreenState extends State<AddInvoiceScreen> {
         amount: amount,
         vendor: vendor,
         issuedAt: _issuedAt,
+        warrantyExpiresAt: _warrantyExpiresAt,
       );
 
       if (!mounted) {
@@ -107,6 +109,21 @@ class _AddInvoiceScreenState extends State<AddInvoiceScreen> {
     final String month = date.month.toString().padLeft(2, '0');
     final String day = date.day.toString().padLeft(2, '0');
     return '${date.year}-$month-$day';
+  }
+
+  Future<void> _pickWarrantyDate() async {
+    final DateTime now = DateTime.now();
+    final DateTime initial = _warrantyExpiresAt ?? _issuedAt;
+    final DateTime? selected = await showDatePicker(
+      context: context,
+      initialDate: initial.isBefore(_issuedAt) ? _issuedAt : initial,
+      firstDate: _issuedAt,
+      lastDate: DateTime(now.year + 15),
+    );
+
+    if (selected != null) {
+      setState(() => _warrantyExpiresAt = selected);
+    }
   }
 
   @override
@@ -153,6 +170,31 @@ class _AddInvoiceScreenState extends State<AddInvoiceScreen> {
               side: const BorderSide(color: AppColors.border),
             ),
           ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: _pickWarrantyDate,
+            icon: const Icon(Icons.verified_user_outlined),
+            label: Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                _warrantyExpiresAt == null
+                    ? 'الضمان (اختياري): غير محدد'
+                    : 'نهاية الضمان: ${_formatDate(_warrantyExpiresAt!)}',
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(52),
+              side: const BorderSide(color: AppColors.border),
+            ),
+          ),
+          if (_warrantyExpiresAt != null) ...[
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: () => setState(() => _warrantyExpiresAt = null),
+              icon: const Icon(Icons.clear_rounded),
+              label: const Text('إزالة تاريخ الضمان'),
+            ),
+          ],
           const SizedBox(height: 16),
           AppPrimaryButton(
             label: 'حفظ الفاتورة',

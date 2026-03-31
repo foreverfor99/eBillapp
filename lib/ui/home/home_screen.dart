@@ -7,6 +7,7 @@ import '../../theme/app_colors.dart';
 import '../profile/profile_screen.dart';
 import '../widgets/app_button.dart';
 import 'add_invoice_screen.dart';
+import 'warranty_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -42,6 +43,12 @@ class _HomeScreenState extends State<HomeScreen> {
   void _openProfile() {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const ProfileScreen()),
+    );
+  }
+
+  void _openWarranties() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const WarrantyScreen()),
     );
   }
 
@@ -95,7 +102,21 @@ class _HomeScreenState extends State<HomeScreen> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              _AddInvoiceCta(onPressed: _openAddInvoice),
+              _QuickActionsCard(
+                onAddInvoice: _openAddInvoice,
+                onOpenWarranty: _openWarranties,
+              ),
+              const SizedBox(height: 16),
+              StreamBuilder<List<InvoiceRecord>>(
+                stream: _invoiceRepository.watchUserInvoices(user.uid),
+                builder: (context, snapshot) {
+                  final List<InvoiceRecord> invoices = snapshot.data ?? const [];
+                  final int activeWarranties = invoices
+                      .where((invoice) => invoice.isWarrantyActive())
+                      .length;
+                  return _ActiveWarrantiesCard(count: activeWarranties);
+                },
+              ),
               const SizedBox(height: 16),
               Text(
                 'فواتيري',
@@ -147,10 +168,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _AddInvoiceCta extends StatelessWidget {
-  const _AddInvoiceCta({required this.onPressed});
+class _QuickActionsCard extends StatelessWidget {
+  const _QuickActionsCard({
+    required this.onAddInvoice,
+    required this.onOpenWarranty,
+  });
 
-  final VoidCallback onPressed;
+  final VoidCallback onAddInvoice;
+  final VoidCallback onOpenWarranty;
 
   @override
   Widget build(BuildContext context) {
@@ -179,7 +204,7 @@ class _AddInvoiceCta extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'إدارة فواتيرك أسرع',
+            'Quick Actions',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   color: AppColors.textPrimary,
                   fontWeight: FontWeight.w700,
@@ -187,14 +212,92 @@ class _AddInvoiceCta extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            'أضف فاتورة جديدة واحتفظ بسجل واضح لكل المصروفات.',
+            'اختصارات سريعة للوصول للمهام الأساسية.',
             style: TextStyle(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 12),
-          AppButton(
-            label: 'إضافة فاتورة',
-            icon: Icons.add_rounded,
-            onPressed: onPressed,
+          Row(
+            children: [
+              Expanded(
+                child: AppButton(
+                  label: 'إضافة فاتورة',
+                  icon: Icons.add_rounded,
+                  onPressed: onAddInvoice,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: AppButton(
+                  label: 'Warranty',
+                  icon: Icons.verified_user_outlined,
+                  variant: AppButtonVariant.secondary,
+                  onPressed: onOpenWarranty,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActiveWarrantiesCard extends StatelessWidget {
+  const _ActiveWarrantiesCard({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundElevated.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.verified_user_rounded,
+            color: AppColors.accentSoft,
+            size: 28,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Active Warranties',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$count ضمان ما زال ساريًا',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.accent.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.accent.withValues(alpha: 0.35)),
+            ),
+            child: Text(
+              '$count',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: AppColors.accentSoft,
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
           ),
         ],
       ),
