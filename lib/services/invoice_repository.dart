@@ -7,6 +7,7 @@ class InvoiceRecord {
     required this.title,
     required this.amount,
     required this.vendor,
+    required this.category,
     required this.issuedAt,
     required this.warrantyExpiresAt,
     required this.createdAt,
@@ -18,6 +19,7 @@ class InvoiceRecord {
   final String title;
   final double amount;
   final String vendor;
+  final String category;
   final DateTime? issuedAt;
   final DateTime? warrantyExpiresAt;
   final DateTime? createdAt;
@@ -33,6 +35,7 @@ class InvoiceRecord {
       title: (data['title'] as String? ?? '').trim(),
       amount: _toDouble(data['amount']),
       vendor: (data['vendor'] as String? ?? '').trim(),
+      category: (data['category'] as String? ?? '').trim(),
       issuedAt: _toDateTime(data['issuedAt']),
       warrantyExpiresAt: _toDateTime(data['warrantyExpiresAt']),
       createdAt: _toDateTime(data['createdAt']),
@@ -104,6 +107,7 @@ class InvoiceRepository {
     required String title,
     required double amount,
     required String vendor,
+    String? category,
     required DateTime issuedAt,
     DateTime? warrantyExpiresAt,
   }) async {
@@ -116,6 +120,7 @@ class InvoiceRepository {
         'title': title.trim(),
         'amount': amount,
         'vendor': vendor.trim(),
+        'category': (category ?? '').trim(),
         'issuedAt': Timestamp.fromDate(issuedAt),
         if (warrantyExpiresAt != null)
           'warrantyExpiresAt': Timestamp.fromDate(warrantyExpiresAt),

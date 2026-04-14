@@ -7,7 +7,6 @@ import '../../theme/app_colors.dart';
 import '../profile/profile_screen.dart';
 import '../widgets/app_button.dart';
 import 'add_invoice_screen.dart';
-import 'warranty_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,6 +18,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final AuthService _authService = AuthService();
   final InvoiceRepository _invoiceRepository = InvoiceRepository();
+  int _selectedTabIndex = 0;
 
   @override
   void initState() {
@@ -47,9 +47,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openWarranties() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const WarrantyScreen()),
-    );
+    setState(() => _selectedTabIndex = 1);
+  }
+
+  void _onBottomNavTap(int index) {
+    if (index == 2) {
+      _openProfile();
+      return;
+    }
+    setState(() => _selectedTabIndex = index);
   }
 
   @override
@@ -79,13 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const Text('الرئيسية'),
             ],
           ),
-          actions: [
-            IconButton(
-              tooltip: 'الملف الشخصي',
-              onPressed: _openProfile,
-              icon: const Icon(Icons.person_outline_rounded),
-            ),
-          ],
+          actions: const [],
         ),
         body: Container(
           decoration: const BoxDecoration(
@@ -99,71 +99,170 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-          child: ListView(
-            padding: const EdgeInsets.all(16),
+          child: IndexedStack(
+            index: _selectedTabIndex,
             children: [
-              _QuickActionsCard(
+              _HomeDashboard(
+                invoiceRepository: _invoiceRepository,
+                ownerId: user.uid,
                 onAddInvoice: _openAddInvoice,
                 onOpenWarranty: _openWarranties,
               ),
-              const SizedBox(height: 16),
-              StreamBuilder<List<InvoiceRecord>>(
-                stream: _invoiceRepository.watchUserInvoices(user.uid),
-                builder: (context, snapshot) {
-                  final List<InvoiceRecord> invoices = snapshot.data ?? const [];
-                  final int activeWarranties = invoices
-                      .where((invoice) => invoice.isWarrantyActive())
-                      .length;
-                  return _ActiveWarrantiesCard(count: activeWarranties);
-                },
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'فواتيري',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-              const SizedBox(height: 10),
-              StreamBuilder<List<InvoiceRecord>>(
-                stream: _invoiceRepository.watchUserInvoices(user.uid),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting &&
-                      !snapshot.hasData) {
-                    return const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 32),
-                      child: Center(
-                        child: CircularProgressIndicator(color: AppColors.accent),
-                      ),
-                    );
-                  }
-
-                  if (snapshot.hasError) {
-                    return const _ErrorCard(
-                      message: 'تعذر تحميل الفواتير الآن. حاول مرة أخرى.',
-                    );
-                  }
-
-                  final List<InvoiceRecord> invoices =
-                      List<InvoiceRecord>.from(snapshot.data ?? const []);
-                  if (invoices.isEmpty) {
-                    return _EmptyInvoicesState(onAddPressed: _openAddInvoice);
-                  }
-
-                  return Column(
-                    children: invoices
-                        .map((invoice) => Padding(
-                              padding: const EdgeInsets.only(bottom: 10),
-                              child: _InvoiceCard(invoice: invoice),
-                            ))
-                        .toList(),
-                  );
-                },
+              _WarrantyTab(
+                invoiceRepository: _invoiceRepository,
+                ownerId: user.uid,
               ),
             ],
           ),
         ),
+        bottomNavigationBar: BottomNavigationBar(
+          currentIndex: _selectedTabIndex,
+          onTap: _onBottomNavTap,
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home_outlined),
+              activeIcon: Icon(Icons.home_rounded),
+              label: 'Home',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.verified_user_outlined),
+              activeIcon: Icon(Icons.verified_user_rounded),
+              label: 'Warranty',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.person_outline_rounded),
+              activeIcon: Icon(Icons.person_rounded),
+              label: 'Profile',
+            ),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+class _HomeDashboard extends StatelessWidget {
+  const _HomeDashboard({
+    required this.invoiceRepository,
+    required this.ownerId,
+    required this.onAddInvoice,
+    required this.onOpenWarranty,
+  });
+
+  final InvoiceRepository invoiceRepository;
+  final String ownerId;
+  final VoidCallback onAddInvoice;
+  final VoidCallback onOpenWarranty;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _QuickActionsCard(
+          onAddInvoice: onAddInvoice,
+          onOpenWarranty: onOpenWarranty,
+        ),
+        const SizedBox(height: 16),
+        StreamBuilder<List<InvoiceRecord>>(
+          stream: invoiceRepository.watchUserInvoices(ownerId),
+          builder: (context, snapshot) {
+            final List<InvoiceRecord> invoices = snapshot.data ?? const [];
+            final int activeWarranties = invoices
+                .where((invoice) => invoice.isWarrantyActive())
+                .length;
+            return _ActiveWarrantiesCard(count: activeWarranties);
+          },
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'فواتيري',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+        const SizedBox(height: 10),
+        StreamBuilder<List<InvoiceRecord>>(
+          stream: invoiceRepository.watchUserInvoices(ownerId),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting &&
+                !snapshot.hasData) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 32),
+                child: Center(
+                  child: CircularProgressIndicator(color: AppColors.accent),
+                ),
+              );
+            }
+
+            if (snapshot.hasError) {
+              return const _ErrorCard(
+                message: 'تعذر تحميل الفواتير الآن. حاول مرة أخرى.',
+              );
+            }
+
+            final List<InvoiceRecord> invoices =
+                List<InvoiceRecord>.from(snapshot.data ?? const []);
+            if (invoices.isEmpty) {
+              return _EmptyInvoicesState(onAddPressed: onAddInvoice);
+            }
+
+            return Column(
+              children: invoices
+                  .map((invoice) => Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _InvoiceCard(invoice: invoice),
+                      ))
+                  .toList(),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _WarrantyTab extends StatelessWidget {
+  const _WarrantyTab({
+    required this.invoiceRepository,
+    required this.ownerId,
+  });
+
+  final InvoiceRepository invoiceRepository;
+  final String ownerId;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<InvoiceRecord>>(
+      stream: invoiceRepository.watchUserInvoices(ownerId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            !snapshot.hasData) {
+          return const Center(
+            child: CircularProgressIndicator(color: AppColors.accent),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return const Center(child: Text('تعذر تحميل الضمانات الآن.'));
+        }
+
+        final List<InvoiceRecord> activeWarranties = (snapshot.data ?? const [])
+            .where((invoice) => invoice.isWarrantyActive())
+            .toList();
+
+        if (activeWarranties.isEmpty) {
+          return const Center(child: Text('لا توجد ضمانات سارية حاليًا.'));
+        }
+
+        return ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemBuilder: (context, index) =>
+              _WarrantyCard(invoice: activeWarranties[index]),
+          separatorBuilder: (_, __) => const SizedBox(height: 10),
+          itemCount: activeWarranties.length,
+        );
+      },
     );
   }
 }
@@ -346,6 +445,15 @@ class _InvoiceCard extends StatelessWidget {
                   invoice.vendor.isEmpty ? 'مورد غير محدد' : invoice.vendor,
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
+                if (invoice.category.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'التصنيف: ${invoice.category}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                  ),
+                ],
                 const SizedBox(height: 4),
                 Text(
                   'تاريخ الإصدار: ${_formatDate(invoice.issuedAt)}',
@@ -362,6 +470,52 @@ class _InvoiceCard extends StatelessWidget {
                   fontWeight: FontWeight.w800,
                 ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WarrantyCard extends StatelessWidget {
+  const _WarrantyCard({required this.invoice});
+
+  final InvoiceRecord invoice;
+
+  String _formatDate(DateTime? date) {
+    if (date == null) {
+      return '-';
+    }
+    final String month = date.month.toString().padLeft(2, '0');
+    final String day = date.day.toString().padLeft(2, '0');
+    return '${date.year}-$month-$day';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundElevated.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            invoice.title.isEmpty ? 'فاتورة بدون عنوان' : invoice.title,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          const SizedBox(height: 6),
+          Text('المورد: ${invoice.vendor.isEmpty ? "-" : invoice.vendor}'),
+          if (invoice.category.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text('التصنيف: ${invoice.category}'),
+          ],
+          const SizedBox(height: 4),
+          Text('تاريخ انتهاء الضمان: ${_formatDate(invoice.warrantyExpiresAt)}'),
         ],
       ),
     );

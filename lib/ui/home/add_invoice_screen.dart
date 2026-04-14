@@ -18,6 +18,7 @@ class _AddInvoiceScreenState extends State<AddInvoiceScreen> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _vendorController = TextEditingController();
+  final TextEditingController _categoryController = TextEditingController();
   final InvoiceRepository _invoiceRepository = InvoiceRepository();
 
   DateTime _issuedAt = DateTime.now();
@@ -29,6 +30,7 @@ class _AddInvoiceScreenState extends State<AddInvoiceScreen> {
     _titleController.dispose();
     _amountController.dispose();
     _vendorController.dispose();
+    _categoryController.dispose();
     super.dispose();
   }
 
@@ -55,6 +57,7 @@ class _AddInvoiceScreenState extends State<AddInvoiceScreen> {
 
     final String title = _titleController.text.trim();
     final String vendor = _vendorController.text.trim();
+    final String category = _categoryController.text.trim();
     final String amountText = _amountController.text.trim();
     final double? amount = double.tryParse(amountText);
 
@@ -78,6 +81,7 @@ class _AddInvoiceScreenState extends State<AddInvoiceScreen> {
         title: title,
         amount: amount,
         vendor: vendor,
+        category: category,
         issuedAt: _issuedAt,
         warrantyExpiresAt: _warrantyExpiresAt,
       );
@@ -156,6 +160,13 @@ class _AddInvoiceScreenState extends State<AddInvoiceScreen> {
             label: 'المورد / الجهة',
             hint: 'اسم المتجر أو الشركة',
             icon: Icons.storefront_outlined,
+          ),
+          const SizedBox(height: 12),
+          AppTextField(
+            controller: _categoryController,
+            label: 'Category / التصنيف',
+            hint: 'مثال: إلكترونيات، منزلية، اشتراك',
+            icon: Icons.category_outlined,
           ),
           const SizedBox(height: 12),
           OutlinedButton.icon(
