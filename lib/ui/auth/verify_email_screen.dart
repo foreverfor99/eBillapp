@@ -6,7 +6,6 @@ import '../../services/auth_service.dart';
 import '../../theme/app_colors.dart';
 import '../widgets/app_button.dart';
 import '../widgets/app_scaffold.dart';
-import 'login_screen.dart';
 
 class VerifyEmailScreen extends StatefulWidget {
   const VerifyEmailScreen({super.key, required this.email});
@@ -64,8 +63,8 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
     if (_isVerifying) return;
 
     final code = _code.text.trim();
-    if (code.length < 4) {
-      _show('أدخل رمز صحيح.');
+    if (code.length != 6) {
+      _show('أدخل رمزًا مكوّنًا من 6 أرقام.');
       return;
     }
 

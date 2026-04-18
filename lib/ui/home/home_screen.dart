@@ -1,9 +1,13 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../main.dart';
 import '../../services/auth_service.dart';
 import '../../services/invoice_repository.dart';
 import '../../theme/app_colors.dart';
+import '../auth/verify_email_otp_screen.dart';
+import '../auth/verify_phone_screen.dart';
 import '../profile/profile_screen.dart';
 import '../widgets/app_button.dart';
 import 'add_invoice_screen.dart';
@@ -18,6 +22,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final AuthService _authService = AuthService();
   final InvoiceRepository _invoiceRepository = InvoiceRepository();
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   int _selectedTabIndex = 0;
 
   @override
@@ -40,22 +45,84 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _openProfile() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const ProfileScreen()),
-    );
-  }
-
   void _openWarranties() {
     setState(() => _selectedTabIndex = 1);
   }
 
   void _onBottomNavTap(int index) {
-    if (index == 2) {
-      _openProfile();
+    setState(() => _selectedTabIndex = index);
+  }
+
+  void _closeDrawerIfOpen() {
+    _scaffoldKey.currentState?.closeDrawer();
+  }
+
+  Future<void> _logoutFromDrawer() async {
+    _closeDrawerIfOpen();
+    try {
+      await _authService.signOut();
+    } catch (_) {}
+    if (!mounted) {
       return;
     }
-    setState(() => _selectedTabIndex = index);
+    rootNavKey.currentState?.pushNamedAndRemoveUntil('/', (route) => false);
+  }
+
+  Future<void> _openEmailOtpFromDrawer() async {
+    _closeDrawerIfOpen();
+    final User? user = FirebaseAuth.instance.currentUser;
+    final String? email = user?.email;
+    if (email == null || email.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لا يوجد بريد مرتبط بالحساب.')),
+        );
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => VerifyEmailOtpScreen(email: email),
+      ),
+    );
+  }
+
+  Future<void> _openPhoneVerifyFromDrawer() async {
+    _closeDrawerIfOpen();
+    final User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return;
+    }
+    final DocumentSnapshot<Map<String, dynamic>> snap = await FirebaseFirestore
+        .instance
+        .collection('users')
+        .doc(user.uid)
+        .get();
+    final String phone =
+        (snap.data()?['phoneNumber'] as String? ?? '').trim();
+    if (phone.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('أضف رقم الجوال من الملف الشخصي ثم ارجع لهنا.'),
+        ),
+      );
+      setState(() => _selectedTabIndex = 2);
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => VerifyPhoneScreen(phoneNumber: phone),
+      ),
+    );
   }
 
   @override
@@ -69,10 +136,44 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
+    final String appBarTitle = switch (_selectedTabIndex) {
+      1 => 'الضمانات',
+      2 => 'الملف الشخصي',
+      _ => 'الرئيسية',
+    };
+
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
+        key: _scaffoldKey,
+        drawer: _MainNavigationDrawer(
+          user: user,
+          onPickHome: () {
+            _closeDrawerIfOpen();
+            setState(() => _selectedTabIndex = 0);
+          },
+          onPickWarranties: () {
+            _closeDrawerIfOpen();
+            setState(() => _selectedTabIndex = 1);
+          },
+          onPickProfile: () {
+            _closeDrawerIfOpen();
+            setState(() => _selectedTabIndex = 2);
+          },
+          onAddInvoice: () async {
+            _closeDrawerIfOpen();
+            await _openAddInvoice();
+          },
+          onEmailOtp: _openEmailOtpFromDrawer,
+          onPhoneVerify: _openPhoneVerifyFromDrawer,
+          onLogout: _logoutFromDrawer,
+        ),
         appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.menu_rounded),
+            tooltip: 'القائمة',
+            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+          ),
           title: Row(
             children: [
               Image.asset(
@@ -82,10 +183,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 fit: BoxFit.contain,
               ),
               const SizedBox(width: 10),
-              const Text('الرئيسية'),
+              Expanded(
+                child: Text(
+                  appBarTitle,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
-          actions: const [],
         ),
         body: Container(
           decoration: const BoxDecoration(
@@ -112,6 +217,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 invoiceRepository: _invoiceRepository,
                 ownerId: user.uid,
               ),
+              const ProfileScreen(),
             ],
           ),
         ),
@@ -585,6 +691,113 @@ class _ErrorCard extends StatelessWidget {
       child: Text(
         message,
         style: const TextStyle(color: AppColors.danger),
+      ),
+    );
+  }
+}
+
+class _MainNavigationDrawer extends StatelessWidget {
+  const _MainNavigationDrawer({
+    required this.user,
+    required this.onPickHome,
+    required this.onPickWarranties,
+    required this.onPickProfile,
+    required this.onAddInvoice,
+    required this.onEmailOtp,
+    required this.onPhoneVerify,
+    required this.onLogout,
+  });
+
+  final User user;
+  final VoidCallback onPickHome;
+  final VoidCallback onPickWarranties;
+  final VoidCallback onPickProfile;
+  final Future<void> Function() onAddInvoice;
+  final Future<void> Function() onEmailOtp;
+  final Future<void> Function() onPhoneVerify;
+  final Future<void> Function() onLogout;
+
+  @override
+  Widget build(BuildContext context) {
+    final String? email = user.email;
+    return Drawer(
+      backgroundColor: AppColors.backgroundElevated,
+      child: SafeArea(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.12),
+                border: const Border(
+                  bottom: BorderSide(color: AppColors.border),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  const Text(
+                    'eBill Wallet',
+                    style: TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    email ?? user.uid,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 13,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.home_outlined, color: AppColors.accentSoft),
+              title: const Text('الرئيسية'),
+              onTap: onPickHome,
+            ),
+            ListTile(
+              leading: const Icon(Icons.verified_user_outlined, color: AppColors.accentSoft),
+              title: const Text('الضمانات'),
+              onTap: onPickWarranties,
+            ),
+            ListTile(
+              leading: const Icon(Icons.person_outline_rounded, color: AppColors.accentSoft),
+              title: const Text('الملف الشخصي'),
+              onTap: onPickProfile,
+            ),
+            ListTile(
+              leading: const Icon(Icons.add_circle_outline_rounded, color: AppColors.accentSoft),
+              title: const Text('إضافة فاتورة'),
+              onTap: () => onAddInvoice(),
+            ),
+            const Divider(color: AppColors.border),
+            ListTile(
+              leading: const Icon(Icons.mark_email_unread_outlined, color: AppColors.accentSoft),
+              title: const Text('تحقق البريد (OTP)'),
+              subtitle: const Text('يتطلب تشغيل خادم البريد'),
+              onTap: () => onEmailOtp(),
+            ),
+            ListTile(
+              leading: const Icon(Icons.phone_android_rounded, color: AppColors.accentSoft),
+              title: const Text('تحقق الجوال'),
+              subtitle: const Text('رقم الجوال من بياناتك في الملف الشخصي'),
+              onTap: () => onPhoneVerify(),
+            ),
+            const Divider(color: AppColors.border),
+            ListTile(
+              leading: const Icon(Icons.logout_rounded, color: AppColors.danger),
+              title: const Text('تسجيل الخروج', style: TextStyle(color: AppColors.danger)),
+              onTap: () => onLogout(),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
+import 'api_client.dart';
 
 class AuthOperationException implements Exception {
   const AuthOperationException(this.message);
@@ -108,6 +112,123 @@ class AuthService {
       }
       throw AuthOperationException(_handleAuthException(e));
     }
+  }
+
+  // ---------- Email OTP (Node server: /v1/email-otp) ----------
+
+  Future<void> sendEmailOtpForEmail(String email) async {
+    final User? user = _auth.currentUser;
+    if (user == null) {
+      throw const AuthOperationException('يجب تسجيل الدخول أولاً.');
+    }
+    try {
+      final ApiClient client = ApiClient();
+      await client.post('/v1/email-otp/send', <String, dynamic>{
+        'email': email.trim(),
+      });
+    } on ApiException catch (e) {
+      throw AuthOperationException(e.message);
+    }
+  }
+
+  Future<void> sendEmailOtp() async {
+    final String? email = _auth.currentUser?.email;
+    if (email == null || email.isEmpty) {
+      throw const AuthOperationException('لا يوجد بريد مرتبط بالحساب.');
+    }
+    await sendEmailOtpForEmail(email);
+  }
+
+  Future<void> verifyEmailOtp(String code) async {
+    final User? user = _auth.currentUser;
+    if (user == null) {
+      throw const AuthOperationException('يجب تسجيل الدخول أولاً.');
+    }
+    try {
+      final ApiClient client = ApiClient();
+      await client.post('/v1/email-otp/verify', <String, dynamic>{
+        'code': code.trim(),
+      });
+      await user.reload();
+    } on ApiException catch (e) {
+      throw AuthOperationException(e.message);
+    }
+  }
+
+  Future<void> markLoginOtpPending(bool pending) async {
+    final User? user = _auth.currentUser;
+    if (user == null) {
+      return;
+    }
+    await _firestore.collection(usersCollection).doc(user.uid).set(
+      <String, dynamic>{
+        'loginOtpPending': pending,
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  // ---------- Phone verification (Firebase) ----------
+
+  Future<void> verifyPhone({
+    required String phoneNumber,
+    required void Function(String verificationId) onCodeSent,
+    required void Function(String message) onVerificationFailed,
+  }) async {
+    final Completer<void> done = Completer<void>();
+
+    _auth.verifyPhoneNumber(
+      phoneNumber: phoneNumber,
+      timeout: const Duration(seconds: 120),
+      verificationCompleted: (PhoneAuthCredential credential) async {
+        try {
+          await _auth.currentUser?.linkWithCredential(credential);
+        } catch (_) {}
+      },
+      verificationFailed: (FirebaseAuthException e) {
+        onVerificationFailed(_handleAuthException(e));
+        if (!done.isCompleted) {
+          done.complete();
+        }
+      },
+      codeSent: (String verificationId, int? resendToken) {
+        onCodeSent(verificationId);
+        if (!done.isCompleted) {
+          done.complete();
+        }
+      },
+      codeAutoRetrievalTimeout: (String verificationId) {
+        if (!done.isCompleted) {
+          done.complete();
+        }
+      },
+    );
+
+    return done.future;
+  }
+
+  Future<void> linkPhone(String verificationId, String smsCode) async {
+    final User? user = _auth.currentUser;
+    if (user == null) {
+      throw const AuthOperationException('يجب تسجيل الدخول أولاً.');
+    }
+    final PhoneAuthCredential credential = PhoneAuthProvider.credential(
+      verificationId: verificationId,
+      smsCode: smsCode.trim(),
+    );
+    await user.linkWithCredential(credential);
+    await user.reload();
+    final User? updated = _auth.currentUser;
+    final String? phone = updated?.phoneNumber;
+    await _firestore.collection(usersCollection).doc(user.uid).set(
+      <String, dynamic>{
+        if (phone != null && phone.isNotEmpty) 'phoneNumber': phone,
+        'phoneVerified': true,
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
   }
 
   String _handleAuthException(FirebaseAuthException error) {
