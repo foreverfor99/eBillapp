@@ -1,5 +1,4 @@
 import 'dart:io';
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -22,12 +21,16 @@ class _AddInvoiceScreenState extends State<AddInvoiceScreen> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _vendorController = TextEditingController();
+  final TextEditingController _categoryController = TextEditingController();
 
   final InvoiceRepository _invoiceRepository = InvoiceRepository();
   final OcrService _ocrService = OcrService();
   final ImagePicker _imagePicker = ImagePicker();
 
   DateTime _issuedAt = DateTime.now();
+  bool _hasWarranty = false;
+  DateTime? _warrantyExp;
+
   bool _isSaving = false;
   bool _isScanning = false;
 
@@ -39,6 +42,7 @@ class _AddInvoiceScreenState extends State<AddInvoiceScreen> {
     _titleController.dispose();
     _amountController.dispose();
     _vendorController.dispose();
+    _categoryController.dispose();
     _ocrService.dispose();
     super.dispose();
   }
@@ -54,6 +58,23 @@ class _AddInvoiceScreenState extends State<AddInvoiceScreen> {
 
     if (selected != null && mounted) {
       setState(() => _issuedAt = selected);
+    }
+  }
+
+  Future<void> _pickWarrantyDate() async {
+    final DateTime now = DateTime.now();
+    final DateTime initialDate =
+        _warrantyExp ?? now.add(const Duration(days: 30));
+
+    final DateTime? selected = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: now,
+      lastDate: DateTime(now.year + 10),
+    );
+
+    if (selected != null && mounted) {
+      setState(() => _warrantyExp = selected);
     }
   }
 
@@ -87,6 +108,10 @@ class _AddInvoiceScreenState extends State<AddInvoiceScreen> {
         _issuedAt = result.date!;
       }
 
+      if (result.category.trim().isNotEmpty) {
+        _categoryController.text = result.category.trim();
+      }
+
       setState(() {
         _ocrStatus = 'تمت قراءة الصورة. راجعي البيانات قبل الحفظ.';
       });
@@ -114,6 +139,7 @@ class _AddInvoiceScreenState extends State<AddInvoiceScreen> {
 
     final String title = _titleController.text.trim();
     final String vendor = _vendorController.text.trim();
+    final String category = _categoryController.text.trim();
     final String amountText = _amountController.text.trim();
     final double? amount = double.tryParse(amountText);
 
@@ -129,6 +155,10 @@ class _AddInvoiceScreenState extends State<AddInvoiceScreen> {
       _showMessage('أدخل مبلغًا صحيحًا أكبر من صفر.');
       return;
     }
+    if (_hasWarranty && _warrantyExp == null) {
+      _showMessage('اختاري تاريخ انتهاء الضمان.');
+      return;
+    }
 
     setState(() => _isSaving = true);
     try {
@@ -138,6 +168,9 @@ class _AddInvoiceScreenState extends State<AddInvoiceScreen> {
         amount: amount,
         vendor: vendor,
         issuedAt: _issuedAt,
+        category: category,
+        hasWarranty: _hasWarranty,
+        warrantyExp: _hasWarranty ? _warrantyExp : null,
       );
 
       if (!mounted) {
@@ -253,6 +286,13 @@ class _AddInvoiceScreenState extends State<AddInvoiceScreen> {
             icon: Icons.storefront_outlined,
           ),
           const SizedBox(height: 12),
+          AppTextField(
+            controller: _categoryController,
+            label: 'التصنيف',
+            hint: 'مثال: Groceries',
+            icon: Icons.category_outlined,
+          ),
+          const SizedBox(height: 12),
           OutlinedButton.icon(
             onPressed: _pickDate,
             icon: const Icon(Icons.calendar_month_rounded),
@@ -265,6 +305,40 @@ class _AddInvoiceScreenState extends State<AddInvoiceScreen> {
               side: const BorderSide(color: AppColors.border),
             ),
           ),
+          const SizedBox(height: 12),
+          SwitchListTile(
+            value: _hasWarranty,
+            onChanged: (bool value) {
+              setState(() {
+                _hasWarranty = value;
+                if (!value) {
+                  _warrantyExp = null;
+                }
+              });
+            },
+            contentPadding: EdgeInsets.zero,
+            title: const Text('يوجد ضمان'),
+            subtitle: const Text('فعّليها إذا كانت الفاتورة تحتوي على ضمان'),
+          ),
+          if (_hasWarranty) ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _pickWarrantyDate,
+              icon: const Icon(Icons.event_available_rounded),
+              label: Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  _warrantyExp != null
+                      ? 'تاريخ انتهاء الضمان: ${_formatDate(_warrantyExp!)}'
+                      : 'اختيار تاريخ انتهاء الضمان',
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+                side: const BorderSide(color: AppColors.border),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           AppPrimaryButton(
             label: _isScanning ? 'جاري قراءة الفاتورة...' : 'حفظ الفاتورة',
